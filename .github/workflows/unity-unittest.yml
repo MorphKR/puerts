@@ -1,4 +1,4 @@
-name: ci
+name: unity-unittest
 
 on: 
   workflow_dispatch:
@@ -11,30 +11,30 @@ on:
       - unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.cpp
       - unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.h
       - unreal/Puerts/Source/JsEnv/Private/PromiseRejectCallback.hpp
+      - .github/workflows/unity-unittest.yml
   
 env:
   RUNID: 613573412
 
 jobs:
-  ci-v8:
+  unittest-v8:
     runs-on: windows-2019
 
     steps:
       - uses: actions/checkout@v2
       - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@v1.0.2
-      - name: Download artifact
-        uses: dawidd6/action-download-artifact@v2
+      - name: Get backend artifact
+        uses: ./.github/workflows/composites/unity-download-backend/
         with:
-          workflow: build_v8.yml
-          name: v8_bin_win64
-          path: unity/native_src/
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: 'v8'
       - name: Build plugin
         run: |
           md unity\general\Bin
           cd unity\native_src
           .\make_win64.bat
-          copy build64\Release\puerts.dll ..\general\Bin
+          copy build64_v8\Release\puerts.dll ..\general\Bin
       - name: UnitTest
         run: |
           cd unity\general\vs2013
@@ -42,26 +42,24 @@ jobs:
           nuget install NUnit.Runners -Version 3.2.0 -OutputDirectory testrunner -ExcludeVersion
           msbuild /property:Configuration=Release Puerts.sln
           ./testrunner/NUnit.ConsoleRunner/tools/nunit3-console.exe ../Bin/Puerts.UnitTest.dll   
-  ci-quickjs:
+  unittest-quickjs:
     runs-on: windows-2019
 
     steps:
       - uses: actions/checkout@v2
       - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@v1.0.2
-      - name: Download artifact
-        uses: dawidd6/action-download-artifact@v2
+      - name: Get backend artifact
+        uses: ./.github/workflows/composites/unity-download-backend/
         with:
-          workflow: build_quickjs.yml
-          #run_id: ${{env.RUNID}}
-          name: qjs_v8_bin
-          path: unity/native_src/
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: 'quickjs'
       - name: Build plugin
         run: |
           md unity\general\Bin
           cd unity\native_src
-          .\make_win64_qjs.bat
-          copy build64qjs\Release\puerts.dll ..\general\Bin
+          .\make_win64.bat quickjs
+          copy build64_quickjs\Release\puerts.dll ..\general\Bin
           copy quickjs\Lib\Win64\*.dll ..\general\Bin
       - name: UnitTest
         run: |
@@ -71,26 +69,24 @@ jobs:
           msbuild /property:Configuration=Release Puerts.sln
           ./testrunner/NUnit.ConsoleRunner/tools/nunit3-console.exe ../Bin/Puerts.UnitTest.dll
           
-  ci-nodejs:
+  unittest-nodejs:
     runs-on: windows-2019
 
     steps:
       - uses: actions/checkout@v2
       - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@v1.0.2
-      - name: Download artifact
-        uses: dawidd6/action-download-artifact@v2
+      - name: Get backend artifact
+        uses: ./.github/workflows/composites/unity-download-backend/
         with:
-          workflow: build_nodejs.yml
-          #run_id: ${{env.RUNID}}
-          name: nodejs_bin
-          path: unity/native_src/
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: 'nodejs'
       - name: Build plugin
         run: |
           md unity\general\Bin
           cd unity\native_src
-          .\make_win64_node.bat
-          copy build64nodejs\Release\puerts.dll ..\general\Bin
+          .\make_win64.bat nodejs
+          copy build64_nodejs\Release\puerts.dll ..\general\Bin
           copy nodejs\Lib\Win64\*.dll ..\general\Bin
       - name: UnitTest
         run: |
@@ -99,17 +95,4 @@ jobs:
           nuget install NUnit.Runners -Version 3.2.0 -OutputDirectory testrunner -ExcludeVersion
           msbuild /property:Configuration=Release Puerts.sln
           ./testrunner/NUnit.ConsoleRunner/tools/nunit3-console.exe ../Bin/Puerts.UnitTest.dll
-          
-  test-workflow-download:
-    runs-on: windows-2019
-
-    steps:
-
-      - name: Download artifact
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: build_quickjs.yml
-          name: qjs_v8_bin
-          path: ./
-      
 
