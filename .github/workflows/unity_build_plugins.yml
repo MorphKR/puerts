@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Get backend artifact
         uses: ./.github/workflows/composites/unity-download-backend/
         with:
@@ -38,7 +38,7 @@ jobs:
           chmod 777 make_android.sh
           ANDROID_NDK=~/android-ndk-r21b ./make_android.sh
       - name: Upload
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           path: ./unity/Assets/Plugins/**/*
           name: Unity_Plugins_V8
@@ -46,7 +46,7 @@ jobs:
     runs-on: macos-10.15
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Get backend artifact
         uses: ./.github/workflows/composites/unity-download-backend/
         with:
@@ -59,7 +59,7 @@ jobs:
           cd unity/native_src
           sh ./make_ios.sh
       - name: Upload
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           path: ./unity/Assets/Plugins/**/*
           name: Unity_Plugins_V8
@@ -67,7 +67,7 @@ jobs:
     runs-on: macos-10.15
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Get backend artifact
         uses: ./.github/workflows/composites/unity-download-backend/
         with:
@@ -80,7 +80,7 @@ jobs:
           cd unity/native_src
           sh ./make_osx.sh
       - name: Upload
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           path: ./unity/Assets/Plugins/**/*
           name: Unity_Plugins_V8
@@ -88,7 +88,7 @@ jobs:
     runs-on: windows-2019
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Get backend artifact
         uses: ./.github/workflows/composites/unity-download-backend/
         with:
@@ -100,7 +100,7 @@ jobs:
           .\make_win64.bat
           .\make_win32.bat
       - name: Upload
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           path: ./unity/Assets/Plugins/**/*
           name: Unity_Plugins_V8
@@ -113,7 +113,7 @@ jobs:
           sudo apt-get install clang
           sudo apt-get install libc++-dev
           sudo apt-get install libc++abi-dev
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Get backend artifact
         uses: ./.github/workflows/composites/unity-download-backend/
         with:
@@ -125,7 +125,7 @@ jobs:
           chmod 777 make_linux64.sh
           ./make_linux64.sh
       - name: Upload
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           path: ./unity/Assets/Plugins/**/*
           name: Unity_Plugins_V8
