@@ -22,6 +22,11 @@ using puerts::JsValueType;
 extern "C" {
 #endif
 
+V8_EXPORT void TerminateExecution(v8::Isolate* Isolate)
+{
+    Isolate->TerminateExecution();
+}
+
 V8_EXPORT int GetLibVersion()
 {
     return LIB_VERSION;
