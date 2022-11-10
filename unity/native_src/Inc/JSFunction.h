@@ -73,7 +73,7 @@ public:
 
     ~JSFunction();
 
-    bool Invoke(int argumentsLength, bool HasResult);
+    bool Invoke(bool HasResult);
 
     std::vector<FValue> Arguments;
 

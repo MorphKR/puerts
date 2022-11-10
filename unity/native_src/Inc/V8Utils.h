@@ -17,7 +17,7 @@
 
 namespace puerts
 {
-const intptr_t OBJECT_MAGIC = 0xFA0E5D68; // a random value
+const intptr_t OBJECT_MAGIC = 0xFA0E5D68;
 
 enum JsValueType
 {

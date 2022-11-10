@@ -16,7 +16,7 @@ namespace puerts
     v8::Local<v8::ArrayBuffer> NewArrayBuffer(v8::Isolate* Isolate, void *Ptr, size_t Size)
     {
         v8::Local<v8::ArrayBuffer> Ab = v8::ArrayBuffer::New(Isolate, Size);
-        void* Buff = Ab->GetBackingStore()->Data();
+        void* Buff = Ab->GetContents().Data();
         ::memcpy(Buff, Ptr, Size);
         return Ab;
     }
@@ -74,11 +74,7 @@ namespace puerts
                 printf("InitializeNodeWithArgs failed\n");
             }
         }
-        std::string Flags = "";
-#if PUERTS_DEBUG
-        Flags += "--expose-gc";
-#endif
-        v8::V8::SetFlagsFromString(Flags.c_str(), static_cast<int>(Flags.size()));
+        // PLog(puerts::Log, "[PuertsDLL][JSEngineWithNode]GPlatform done");
         
         NodeUVLoop = new uv_loop_t;
         const int Ret = uv_loop_init(NodeUVLoop);
@@ -134,10 +130,6 @@ namespace puerts
         Global->Set(Context, FV8Utils::V8String(MainIsolate, "__tgjsEvalScript"), v8::FunctionTemplate::New(MainIsolate, &EvalWithPath)->GetFunction(Context).ToLocalChecked()).Check();
 
         MainIsolate->SetPromiseRejectCallback(&PromiseRejectCallback<JSEngine>);
-#if !WITH_QUICKJS
-        MainIsolate->SetHostInitializeImportMetaObjectCallback(&JSEngine::HostInitializeImportMetaObject);
-#endif
-
         Global->Set(Context, FV8Utils::V8String(MainIsolate, "__tgjsSetPromiseRejectCallback"), v8::FunctionTemplate::New(MainIsolate, &SetPromiseRejectCallback<JSEngine>)->GetFunction(Context).ToLocalChecked()).Check();
 
         JSObjectIdMap.Reset(MainIsolate, v8::Map::New(MainIsolate));
@@ -156,15 +148,10 @@ namespace puerts
             v8::V8::InitializePlatform(GPlatform.get());
             v8::V8::Initialize();
         }
-
-        std::string Flags = "";
-#if PUERTS_DEBUG
-        Flags += "--expose-gc";
-#endif
 #if PLATFORM_IOS
-        Flags += "--jitless --no-expose-wasm";
-#endif
+        std::string Flags = "--jitless --no-expose-wasm";
         v8::V8::SetFlagsFromString(Flags.c_str(), static_cast<int>(Flags.size()));
+#endif
 
         v8::StartupData SnapshotBlob;
         SnapshotBlob.data = (const char *)SnapshotBlobCode;
@@ -197,11 +184,8 @@ namespace puerts
 
         Global->Set(Context, FV8Utils::V8String(Isolate, "__tgjsEvalScript"), v8::FunctionTemplate::New(Isolate, &EvalWithPath)->GetFunction(Context).ToLocalChecked()).Check();
 
-        if (external_quickjs_runtime == nullptr) 
-        {
-            Isolate->SetPromiseRejectCallback(&PromiseRejectCallback<JSEngine>);
-            Global->Set(Context, FV8Utils::V8String(Isolate, "__tgjsSetPromiseRejectCallback"), v8::FunctionTemplate::New(Isolate, &SetPromiseRejectCallback<JSEngine>)->GetFunction(Context).ToLocalChecked()).Check();
-        }
+        Isolate->SetPromiseRejectCallback(&PromiseRejectCallback<JSEngine>);
+        Global->Set(Context, FV8Utils::V8String(Isolate, "__tgjsSetPromiseRejectCallback"), v8::FunctionTemplate::New(Isolate, &SetPromiseRejectCallback<JSEngine>)->GetFunction(Context).ToLocalChecked()).Check();
 
         JSObjectIdMap.Reset(Isolate, v8::Map::New(Isolate));
     }
@@ -257,12 +241,12 @@ namespace puerts
                 Iter->second.Reset();
             }
 #if !WITH_QUICKJS
-            for (auto Iter = PathToModuleMap.begin(); Iter != PathToModuleMap.end(); ++Iter)
+            for (auto Iter = ModuleCacheMap.begin(); Iter != ModuleCacheMap.end(); ++Iter)
             {
                 Iter->second.Reset();
             }
 #endif
-            PathToModuleMap.clear();
+            ModuleCacheMap.clear();
         }
         {
             std::lock_guard<std::mutex> guard(JSFunctionsMutex);

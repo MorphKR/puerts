@@ -1,4 +1,4 @@
-name: unity build plugins
+name: build unity plugins
 
 on: 
   workflow_dispatch:
@@ -33,6 +33,7 @@ jobs:
           unzip -q NDK
       - name: Build
         run: |
+          ls ~/android-ndk-r21b
           cd unity/native_src
           chmod 777 make_android.sh
           ANDROID_NDK=~/android-ndk-r21b ./make_android.sh
@@ -258,3 +259,4 @@ jobs:
         with:
           path: ./unity/Assets/Plugins/**/*
           name: Unity_Plugins_V8
+ 

@@ -109,10 +109,6 @@ if ( WIN32 AND NOT CYGWIN )
     target_compile_definitions (puerts PRIVATE BUILDING_V8_SHARED)
 endif ()
 
-if ( NOT CMAKE_BUILD_TYPE MATCHES "Release" )
-    target_compile_definitions (puerts PRIVATE PUERTS_DEBUG)
-endif ()
-
 include(${PROJECT_SOURCE_DIR}/cmake/${JS_ENGINE}/CMakeLists.txt)
 
 if ( MSYS OR WIN32 )
