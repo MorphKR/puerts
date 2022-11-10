@@ -8,7 +8,7 @@
 #include <cstring>
 #include "V8Utils.h"
 
-#define LIB_VERSION 14
+#define API_LEVEL 16
 
 using puerts::JSEngine;
 using puerts::FValue;
@@ -22,14 +22,14 @@ using puerts::JsValueType;
 extern "C" {
 #endif
 
-V8_EXPORT void TerminateExecution(v8::Isolate* Isolate)
-{
-    Isolate->TerminateExecution();
-}
-
+// deprecated, delete in 1.4 plz
 V8_EXPORT int GetLibVersion()
 {
-    return LIB_VERSION;
+    return API_LEVEL;
+}
+V8_EXPORT int GetApiLevel()
+{
+    return API_LEVEL;
 }
 
 V8_EXPORT int GetLibBackend()
@@ -69,6 +69,32 @@ V8_EXPORT void SetGlobalFunction(v8::Isolate *Isolate, const char *Name, CSharpF
 {
     auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
     JsEngine->SetGlobalFunction(Name, Callback, Data);
+}
+
+V8_EXPORT void SetModuleResolver(v8::Isolate *Isolate, CSharpModuleResolveCallback Resolver, int32_t Idx)
+{
+    auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
+    JsEngine->ModuleResolver = Resolver;
+    JsEngine->Idx = Idx;
+}
+V8_EXPORT void SetPushJSFunctionArgumentsCallback(v8::Isolate *Isolate, CSharpPushJSFunctionArgumentsCallback Callback, int32_t Idx)
+{
+    auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
+    JsEngine->GetJSArgumentsCallback = Callback;
+    JsEngine->Idx = Idx;
+}
+
+V8_EXPORT FResultInfo * ExecuteModule(v8::Isolate *Isolate, const char* Path, const char* Exportee)
+{
+    auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
+    if (JsEngine->ExecuteModule(Path, Exportee))
+    {
+        return &(JsEngine->ResultInfo);
+    }
+    else
+    {
+        return nullptr;
+    }
 }
 
 V8_EXPORT FResultInfo * Eval(v8::Isolate *Isolate, const char *Code, const char* Path)
@@ -337,15 +363,15 @@ V8_EXPORT const char* GetArrayBufferFromValue(v8::Isolate* Isolate, v8::Value *V
         {
             v8::ArrayBufferView * BuffView = v8::ArrayBufferView::Cast(Value);
             *Length = static_cast<int>(BuffView->ByteLength());
-            auto ABC = BuffView->Buffer()->GetContents();
-            return static_cast<char*>(ABC.Data()) + BuffView->ByteOffset();
+            auto ABS = BuffView->Buffer()->GetBackingStore();
+            return static_cast<char*>(ABS->Data()) + BuffView->ByteOffset();
         }
         else if (Value->IsArrayBuffer())
         {
             auto Ab = v8::ArrayBuffer::Cast(Value);
-            auto ABC = Ab->GetContents();
-            *Length = static_cast<int>(ABC.ByteLength());
-            return static_cast<char*>(ABC.Data());
+            auto ABS = Ab->GetBackingStore();
+            *Length = static_cast<int>(ABS->ByteLength());
+            return static_cast<char*>(ABS->Data());
         }
         else
         {
@@ -416,9 +442,10 @@ V8_EXPORT void SetObjectToOutValue(v8::Isolate* Isolate, v8::Value *Value, int C
     if (Value->IsObject())
     {
         auto Context = Isolate->GetCurrentContext();
-        auto Outer = Value->ToObject(Context).ToLocalChecked();
         auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
-        auto ReturnVal = Outer->Set(Context, FV8Utils::V8String(Isolate, "value"), JsEngine->FindOrAddObject(Isolate, Context, ClassID, Ptr));
+        auto Object = JsEngine->FindOrAddObject(Isolate, Context, ClassID, Ptr);
+        auto Outer = Value->ToObject(Context).ToLocalChecked();
+        auto ReturnVal = Outer->Set(Context, FV8Utils::V8String(Isolate, "value"), Object);
     }
 }
 
@@ -542,6 +569,17 @@ V8_EXPORT void ReturnFunction(v8::Isolate* Isolate, const v8::FunctionCallbackIn
    Info.GetReturnValue().Set(Function->GFunction.Get(Isolate));
 }
 
+V8_EXPORT void ReturnCSharpFunctionCallback(v8::Isolate* Isolate, const v8::FunctionCallbackInfo<v8::Value>& Info, CSharpFunctionCallback Callback, int64_t Data)
+{
+    auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
+    v8::Isolate::Scope IsolateScope(Isolate);
+    v8::HandleScope HandleScope(Isolate);
+    v8::Local<v8::Context> Context = JsEngine->ResultInfo.Context.Get(Isolate);
+    v8::Context::Scope ContextScope(Context);
+
+    Info.GetReturnValue().Set(JsEngine->ToTemplate(Isolate, false, Callback, Data)->GetFunction(Context).ToLocalChecked());
+}
+
 V8_EXPORT void ReturnJSObject(v8::Isolate* Isolate, const v8::FunctionCallbackInfo<v8::Value>& Info, puerts::JSObject *Object)
 {
    Info.GetReturnValue().Set(Object->GObject.Get(Isolate));
@@ -555,6 +593,7 @@ V8_EXPORT void PushNullForJSFunction(JSFunction *Function)
 {
     FValue Value;
     Value.Type = puerts::NullOrUndefined;
+    // Function->PushArgument(Value);
     Function->Arguments.push_back(std::move(Value));
 }
 
@@ -563,6 +602,7 @@ V8_EXPORT void PushDateForJSFunction(JSFunction *Function, double DateValue)
     FValue Value;
     Value.Type = puerts::Date;
     Value.Number = DateValue;
+    // Function->PushArgument(Value);
     Function->Arguments.push_back(std::move(Value));
 }
 
@@ -571,6 +611,7 @@ V8_EXPORT void PushBooleanForJSFunction(JSFunction *Function, int B)
     FValue Value;
     Value.Type = puerts::Boolean;
     Value.Boolean = B;
+    // Function->PushArgument(Value);
     Function->Arguments.push_back(std::move(Value));
 }
 
@@ -579,6 +620,7 @@ V8_EXPORT void PushBigIntForJSFunction(JSFunction *Function, int64_t V)
     FValue Value;
     Value.Type = puerts::BigInt;
     Value.BigInt = V;
+    // Function->PushArgument(Value);
     Function->Arguments.push_back(std::move(Value));
 }
 
@@ -592,6 +634,7 @@ V8_EXPORT void PushArrayBufferForJSFunction(JSFunction *Function, unsigned char 
     FValue Value;
     Value.Type = puerts::ArrayBuffer;
     Value.ArrayBuffer.Reset(Isolate, puerts::NewArrayBuffer(Isolate, Bytes, Length));
+    // Function->PushArgument(Value);
     Function->Arguments.push_back(std::move(Value));
 }
 
@@ -600,6 +643,7 @@ V8_EXPORT void PushStringForJSFunction(JSFunction *Function, const char* S)
     FValue Value;
     Value.Type = puerts::String;
     Value.Str = S;
+    // Function->PushArgument(Value);
     Function->Arguments.push_back(std::move(Value));
 }
 
@@ -608,6 +652,7 @@ V8_EXPORT void PushNumberForJSFunction(JSFunction *Function, double D)
     FValue Value;
     Value.Type = puerts::Number;
     Value.Number = D;
+    // Function->PushArgument(Value);
     Function->Arguments.push_back(std::move(Value));
 }
 
@@ -617,28 +662,31 @@ V8_EXPORT void PushObjectForJSFunction(JSFunction *Function, int ClassID, void* 
     Value.Type = puerts::NativeObject;
     Value.ObjectInfo.ClassID = ClassID;
     Value.ObjectInfo.ObjectPtr = Ptr;
+    // Function->PushArgument(Value);
     Function->Arguments.push_back(std::move(Value));
 }
 
 V8_EXPORT void PushJSFunctionForJSFunction(JSFunction *F, JSFunction *V)
 {
-   FValue Value;
-   Value.Type = puerts::Function;
-   Value.FunctionPtr = V;
+    FValue Value;
+    Value.Type = puerts::Function;
+    Value.FunctionPtr = V;
+    // F->PushArgument(Value);
    F->Arguments.push_back(std::move(Value));
 }
 
 V8_EXPORT void PushJSObjectForJSFunction(JSFunction *F, puerts::JSObject *V)
 {
-   FValue Value;
-   Value.Type = puerts::JsObject;
-   Value.JSObjectPtr = V;
-   F->Arguments.push_back(std::move(Value));
+    FValue Value;
+    Value.Type = puerts::JsObject;
+    Value.JSObjectPtr = V;
+    // F->PushArgument(Value);
+    F->Arguments.push_back(std::move(Value));
 }
 
-V8_EXPORT FResultInfo *InvokeJSFunction(JSFunction *Function, int HasResult)
+V8_EXPORT FResultInfo *InvokeJSFunction(JSFunction *Function, int argumentsLength, int HasResult)
 {
-    if (Function->Invoke(HasResult))
+    if (Function->Invoke(argumentsLength, HasResult))
     {
         return &(Function->ResultInfo);
     }
@@ -759,15 +807,15 @@ V8_EXPORT const char *GetArrayBufferFromResult(FResultInfo *ResultInfo, int *Len
     {
         v8::Local<v8::ArrayBufferView>  BuffView = Value.As<v8::ArrayBufferView>();
         *Length = static_cast<int>(BuffView->ByteLength());
-        auto ABC = BuffView->Buffer()->GetContents();
-        return static_cast<char*>(ABC.Data()) + BuffView->ByteOffset();
+        auto ABS = BuffView->Buffer()->GetBackingStore();
+        return static_cast<char*>(ABS->Data()) + BuffView->ByteOffset();
     }
     else if (Value->IsArrayBuffer())
     {
         auto Ab = v8::Local <v8::ArrayBuffer>::Cast(Value);
-        auto ABC = Ab->GetContents();
-        *Length = static_cast<int>(ABC.ByteLength());
-        return static_cast<char*>(ABC.Data());
+        auto ABS = Ab->GetBackingStore();
+        *Length = static_cast<int>(ABS->ByteLength());
+        return static_cast<char*>(ABS->Data());
     }
     else
     {

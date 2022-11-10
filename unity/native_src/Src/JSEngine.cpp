@@ -16,7 +16,7 @@ namespace puerts
     v8::Local<v8::ArrayBuffer> NewArrayBuffer(v8::Isolate* Isolate, void *Ptr, size_t Size)
     {
         v8::Local<v8::ArrayBuffer> Ab = v8::ArrayBuffer::New(Isolate, Size);
-        void* Buff = Ab->GetContents().Data();
+        void* Buff = Ab->GetBackingStore()->Data();
         ::memcpy(Buff, Ptr, Size);
         return Ab;
     }
@@ -51,15 +51,15 @@ namespace puerts
         Info.GetReturnValue().Set(Result.ToLocalChecked());
     }
 
+#if WITH_NODEJS
     void JSEngine::JSEngineWithNode()
     {
-#if WITH_NODEJS
         // PLog(puerts::Log, "[PuertsDLL][JSEngineWithNode]start");
         if (!GPlatform)
         {
             // PLog(puerts::Log, "[PuertsDLL][JSEngineWithNode]GPlatform");
-            int Argc = 1;
-            char* ArgvIn[] = {"--trace-uncaught"};
+            int Argc = 2;
+            char* ArgvIn[] = {"puerts", "--no-harmony-top-level-await"};
             char ** Argv = uv_setup_args(Argc, ArgvIn);
             Args = new std::vector<std::string>(Argv, Argv + Argc);
             ExecArgs = new std::vector<std::string>();
@@ -74,7 +74,11 @@ namespace puerts
                 printf("InitializeNodeWithArgs failed\n");
             }
         }
-        // PLog(puerts::Log, "[PuertsDLL][JSEngineWithNode]GPlatform done");
+        std::string Flags = "";
+#if PUERTS_DEBUG
+        Flags += "--expose-gc";
+#endif
+        v8::V8::SetFlagsFromString(Flags.c_str(), static_cast<int>(Flags.size()));
         
         NodeUVLoop = new uv_loop_t;
         const int Ret = uv_loop_init(NodeUVLoop);
@@ -130,35 +134,42 @@ namespace puerts
         Global->Set(Context, FV8Utils::V8String(MainIsolate, "__tgjsEvalScript"), v8::FunctionTemplate::New(MainIsolate, &EvalWithPath)->GetFunction(Context).ToLocalChecked()).Check();
 
         MainIsolate->SetPromiseRejectCallback(&PromiseRejectCallback<JSEngine>);
+#if !WITH_QUICKJS
+        MainIsolate->SetHostInitializeImportMetaObjectCallback(&JSEngine::HostInitializeImportMetaObject);
+#endif
+
         Global->Set(Context, FV8Utils::V8String(MainIsolate, "__tgjsSetPromiseRejectCallback"), v8::FunctionTemplate::New(MainIsolate, &SetPromiseRejectCallback<JSEngine>)->GetFunction(Context).ToLocalChecked()).Check();
 
         JSObjectIdMap.Reset(MainIsolate, v8::Map::New(MainIsolate));
 
         //the same as raw v8
         MainIsolate->SetMicrotasksPolicy(v8::MicrotasksPolicy::kAuto);
-#endif        
     }
+#endif        
 
+#if !WITH_NODEJS
     void JSEngine::JSEngineWithoutNode(void* external_quickjs_runtime, void* external_quickjs_context)
     {
-#if !WITH_NODEJS
         if (!GPlatform)
         {
             GPlatform = v8::platform::NewDefaultPlatform();
             v8::V8::InitializePlatform(GPlatform.get());
             v8::V8::Initialize();
         }
-#if PLATFORM_IOS
-        std::string Flags = "--jitless --no-expose-wasm";
-        v8::V8::SetFlagsFromString(Flags.c_str(), static_cast<int>(Flags.size()));
-#endif
 
-#if !WITH_NODEJS
+        std::string Flags = "";
+#if PUERTS_DEBUG
+        Flags += "--expose-gc";
+#endif
+#if PLATFORM_IOS
+        Flags += "--jitless --no-expose-wasm";
+#endif
+        v8::V8::SetFlagsFromString(Flags.c_str(), static_cast<int>(Flags.size()));
+
         v8::StartupData SnapshotBlob;
         SnapshotBlob.data = (const char *)SnapshotBlobCode;
         SnapshotBlob.raw_size = sizeof(SnapshotBlobCode);
         v8::V8::SetSnapshotDataBlob(&SnapshotBlob);
-#endif
 
         // 初始化Isolate和DefaultContext
         CreateParams = new v8::Isolate::CreateParams();
@@ -186,12 +197,15 @@ namespace puerts
 
         Global->Set(Context, FV8Utils::V8String(Isolate, "__tgjsEvalScript"), v8::FunctionTemplate::New(Isolate, &EvalWithPath)->GetFunction(Context).ToLocalChecked()).Check();
 
-        Isolate->SetPromiseRejectCallback(&PromiseRejectCallback<JSEngine>);
-        Global->Set(Context, FV8Utils::V8String(Isolate, "__tgjsSetPromiseRejectCallback"), v8::FunctionTemplate::New(Isolate, &SetPromiseRejectCallback<JSEngine>)->GetFunction(Context).ToLocalChecked()).Check();
+        if (external_quickjs_runtime == nullptr) 
+        {
+            Isolate->SetPromiseRejectCallback(&PromiseRejectCallback<JSEngine>);
+            Global->Set(Context, FV8Utils::V8String(Isolate, "__tgjsSetPromiseRejectCallback"), v8::FunctionTemplate::New(Isolate, &SetPromiseRejectCallback<JSEngine>)->GetFunction(Context).ToLocalChecked()).Check();
+        }
 
         JSObjectIdMap.Reset(Isolate, v8::Map::New(Isolate));
-#endif
     }
+#endif
 
     JSEngine::JSEngine(void* external_quickjs_runtime, void* external_quickjs_context)
     {
@@ -242,6 +256,13 @@ namespace puerts
                 }
                 Iter->second.Reset();
             }
+#if !WITH_QUICKJS
+            for (auto Iter = PathToModuleMap.begin(); Iter != PathToModuleMap.end(); ++Iter)
+            {
+                Iter->second.Reset();
+            }
+#endif
+            PathToModuleMap.clear();
         }
         {
             std::lock_guard<std::mutex> guard(JSFunctionsMutex);
@@ -250,9 +271,16 @@ namespace puerts
                 delete *Iter;
             }
         }
+        {
+            std::lock_guard<std::mutex> guard(JSObjectsMutex);
+            for (auto Iter = JSObjectMap.begin(); Iter != JSObjectMap.end(); ++Iter)
+            {
+                delete Iter->second;
+            }
+        }
         
 #if WITH_NODEJS
-        node::EmitExit(NodeEnv);
+        // node::EmitExit(NodeEnv);
         node::Stop(NodeEnv);
         node::FreeEnvironment(NodeEnv);
         node::FreeIsolateData(NodeIsolateData);
@@ -265,7 +293,7 @@ namespace puerts
 #endif
 
         ResultInfo.Context.Reset();
-        // TODO DEBUG下一次new的时候会报错的问题
+        ResultInfo.Result.Reset();
         MainIsolate->Dispose();
         MainIsolate = nullptr;
 
@@ -318,7 +346,11 @@ namespace puerts
         if (!v8ObjectIndex->IsNullOrUndefined())
         {
             int32_t mapIndex = (int32_t)v8::Number::Cast(*v8ObjectIndex)->Value();
-            jsObject = JSObjectMap[mapIndex];
+            auto iter = JSObjectMap.find(mapIndex);
+            if (iter != JSObjectMap.end())
+            {
+                jsObject = iter->second;
+            }
         }
 
         // 如果不存在id，则创建新对象
@@ -354,14 +386,9 @@ namespace puerts
         v8::Context::Scope ContextScope(Context);
 
         v8::Local<v8::Map> idmap = JSObjectIdMap.Get(InObject->Isolate);
-        idmap->Set(
-            InObject->Context.Get(Isolate),
-            InObject->GObject.Get(Isolate),
-            v8::Undefined(Isolate)
-        );
+        idmap->Delete(InObject->Context.Get(Isolate), InObject->GObject.Get(Isolate));
+        JSObjectMap.erase(InObject->Index);
 
-        JSObjectMap[InObject->Index] = nullptr;
-        
         ObjectMapFreeIndex.push_back(InObject->Index);
         delete InObject;
     }
@@ -431,40 +458,6 @@ namespace puerts
         v8::Local<v8::Object> Global = Context->Global();
 
         Global->Set(Context, FV8Utils::V8String(Isolate, Name), ToTemplate(Isolate, true, Callback, Data)->GetFunction(Context).ToLocalChecked()).Check();
-    }
-
-    bool JSEngine::Eval(const char *Code, const char* Path)
-    {
-        v8::Isolate* Isolate = MainIsolate;
-        v8::Isolate::Scope IsolateScope(Isolate);
-        v8::HandleScope HandleScope(Isolate);
-        v8::Local<v8::Context> Context = ResultInfo.Context.Get(Isolate);
-        v8::Context::Scope ContextScope(Context);
-
-        v8::Local<v8::String> Url = FV8Utils::V8String(Isolate, Path == nullptr ? "" : Path);
-        v8::Local<v8::String> Source = FV8Utils::V8String(Isolate, Code);
-        v8::ScriptOrigin Origin(Url);
-        v8::TryCatch TryCatch(Isolate);
-
-        auto CompiledScript = v8::Script::Compile(Context, Source, &Origin);
-        if (CompiledScript.IsEmpty())
-        {
-            LastExceptionInfo = FV8Utils::ExceptionToString(Isolate, TryCatch);
-            return false;
-        }
-        auto maybeValue = CompiledScript.ToLocalChecked()->Run(Context);//error info output
-        if (TryCatch.HasCaught())
-        {
-            LastExceptionInfo = FV8Utils::ExceptionToString(Isolate, TryCatch);
-            return false;
-        }
-
-        if (!maybeValue.IsEmpty())
-        {
-            ResultInfo.Result.Reset(Isolate, maybeValue.ToLocalChecked());
-        }
-
-        return true;
     }
 
     static void NewWrap(const v8::FunctionCallbackInfo<v8::Value>& Info)
