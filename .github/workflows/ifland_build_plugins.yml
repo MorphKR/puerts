@@ -1,4 +1,4 @@
-name: build unity plugins
+name: ifland_build_plugins
 
 on: 
   workflow_dispatch:
@@ -43,7 +43,7 @@ jobs:
           path: ./unity/Assets/Plugins/**/*
           name: Unity_Plugins_V8
   ios:
-    runs-on: macos-10.15
+    runs-on: macos-11.0
 
     steps:
       - uses: actions/checkout@v2
@@ -64,7 +64,7 @@ jobs:
           path: ./unity/Assets/Plugins/**/*
           name: Unity_Plugins_V8
   osx:
-    runs-on: macos-10.15
+    runs-on: macos-11.0
 
     steps:
       - uses: actions/checkout@v2
