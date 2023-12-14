@@ -52,8 +52,8 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           backend: 'v8'
-      - name: Use Xcode 12.0 for x86
-        run: sudo xcode-select -switch "/Applications/Xcode_12.app"
+      - name: Use Xcode for x86
+        run: sudo xcode-select -switch "/Applications/Xcode.app/Contents/Developer"
       - name: Build
         run: |
           cd unity/native_src
@@ -73,8 +73,8 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           backend: 'v8'
-      - name: Use Xcode 12.0 for x86
-        run: sudo xcode-select -switch "/Applications/Xcode_12.app"
+      - name: Use Xcode for x86
+        run: sudo xcode-select -switch "/Applications/Xcode.app/Contents/Developer"
       - name: Build
         run: |
           cd unity/native_src
